@@ -132,3 +132,84 @@ async def enroll_student(
     await db.db.enrollments.insert_one(new_enrollment.dict(by_alias=True, exclude_none=True))
     
     return {"message": "Student successfully enrolled", "internship_id": request.internship_id}
+
+@router.get("/students")
+async def get_all_students(admin: User = Depends(get_current_superadmin)):
+    students_cursor = db.db.users.find({"role": "STUDENT"})
+    students = await students_cursor.to_list(length=1000)
+    
+    result = []
+    for student in students:
+        enrollment = await db.db.enrollments.find_one({"student_id": student["student_id"]})
+        internship_title = "Unassigned"
+        current_module = "-"
+        completed = False
+        
+        if enrollment:
+            internship = await db.db.internships.find_one({"_id": ObjectId(enrollment["internship_id"])})
+            if internship:
+                internship_title = internship.get("title", "Unknown")
+            current_module = enrollment.get("current_module_id", "-")
+            completed = enrollment.get("completed", False)
+            
+        result.append({
+            "id": str(student["_id"]),
+            "student_id": student.get("student_id"),
+            "email": student.get("email"),
+            "name": student.get("name", "Student"),
+            "internship_title": internship_title,
+            "current_module": current_module,
+            "completed": completed
+        })
+        
+    return result
+
+class QuestionCreate(BaseModel):
+    text: str
+    options: list[str]
+    correct_option_index: int
+
+class TestCreate(BaseModel):
+    title: str
+    max_attempts: int = 3
+    pass_mark_percentage: float = 70.0
+    questions: list[QuestionCreate]
+
+class ModuleCreate(BaseModel):
+    id: str
+    title: str
+    content: str = "This is the study material for the module."
+    order: int
+    test: TestCreate
+
+class InternshipCreate(BaseModel):
+    title: str
+    description: str
+    duration_months: int
+    modules: list[ModuleCreate]
+
+@router.get("/internships")
+async def get_internships(admin: User = Depends(get_current_superadmin)):
+    cursor = db.db.internships.find({})
+    internships = await cursor.to_list(length=100)
+    for i in internships:
+        i["id"] = str(i["_id"])
+        del i["_id"]
+    return internships
+
+@router.post("/internships")
+async def create_internship(
+    request: InternshipCreate,
+    admin: User = Depends(get_current_superadmin)
+):
+    from app.models.domain import Internship
+    
+    new_internship = Internship(
+        title=request.title,
+        description=request.description,
+        duration_months=request.duration_months,
+        modules=[m.dict() for m in request.modules]
+    )
+    
+    result = await db.db.internships.insert_one(new_internship.dict(by_alias=True, exclude_none=True))
+    return {"message": "Internship created successfully", "id": str(result.inserted_id)}

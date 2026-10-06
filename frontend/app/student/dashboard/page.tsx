@@ -10,7 +10,7 @@ interface Module {
   id: string;
   title: string;
   content: string;
-  order: int;
+  order: number;
 }
 
 interface DashboardData {
@@ -55,9 +55,20 @@ export default function StudentDashboard() {
     fetchDashboard();
   }, [router]);
 
-  const handleLogout = () => {
-    localStorage.removeItem("arova_token");
-    router.push("/");
+  const handleLogout = async () => {
+    try {
+      const token = localStorage.getItem("arova_token");
+      if (token) {
+        await axios.post("http://localhost:8000/api/auth/logout", {}, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      }
+    } catch (err) {
+      // Ignore errors on logout
+    } finally {
+      localStorage.removeItem("arova_token");
+      router.push("/");
+    }
   };
 
   if (loading) {

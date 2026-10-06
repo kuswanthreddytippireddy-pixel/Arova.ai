@@ -1,17 +1,55 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Users, Upload, LogOut, Plus, Search, BookOpen } from "lucide-react";
+import { Users, Upload, LogOut, Plus, Search, BookOpen, Loader2, CheckCircle2, CircleDashed } from "lucide-react";
 import { useRouter } from "next/navigation";
+import axios from "axios";
 
 export default function AdminDashboard() {
   const router = useRouter();
+  const [students, setStudents] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
 
-  const handleLogout = () => {
-    localStorage.removeItem("arova_token");
-    router.push("/");
+  useEffect(() => {
+    const fetchStudents = async () => {
+      try {
+        const token = localStorage.getItem("arova_token");
+        const res = await axios.get("http://localhost:8000/api/admin/students", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setStudents(res.data);
+      } catch (err) {
+        console.error("Failed to fetch students", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchStudents();
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      const token = localStorage.getItem("arova_token");
+      if (token) {
+        await axios.post("http://localhost:8000/api/auth/logout", {}, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      }
+    } catch (err) {
+      // Ignore errors on logout
+    } finally {
+      localStorage.removeItem("arova_token");
+      router.push("/");
+    }
   };
+
+  const filteredStudents = students.filter(s => 
+    s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    s.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    s.student_id.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   return (
     <div className="min-h-screen pb-20">
@@ -87,14 +125,15 @@ export default function AdminDashboard() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
             className="glass-panel p-8 rounded-3xl group hover:border-blue-500/50 transition-colors cursor-pointer relative overflow-hidden"
+            onClick={() => router.push("/admin/internships/create")}
           >
             <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 blur-[50px] rounded-full pointer-events-none group-hover:bg-blue-500/20 transition-colors" />
             <div className="w-14 h-14 bg-blue-500/20 text-blue-400 rounded-2xl flex items-center justify-center mb-6">
               <BookOpen className="w-7 h-7" />
             </div>
-            <h3 className="text-xl font-bold mb-2">Internship Tracks</h3>
+            <h3 className="text-xl font-bold mb-2">Create Course Track</h3>
             <p className="text-sm text-muted-foreground">
-              View and manage the 1-month, 3-month, and 6-month curriculum structures.
+              Build a new internship track, define curriculum modules, and map out the progression.
             </p>
           </motion.div>
         </div>
@@ -112,17 +151,75 @@ export default function AdminDashboard() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
               <input 
                 type="text" 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full input-glass rounded-xl py-2.5 pl-10 pr-4 text-sm"
                 placeholder="Search by ID or Email..."
               />
             </div>
           </div>
           
-          <div className="text-center py-12 text-muted-foreground border-2 border-dashed border-white/10 rounded-2xl">
-            <Users className="w-12 h-12 mx-auto mb-3 opacity-50" />
-            <p>No students have been registered yet.</p>
-            <p className="text-sm mt-1">Click "Register Student" or "Bulk CSV Upload" to get started.</p>
-          </div>
+          {loading ? (
+            <div className="py-12 flex justify-center">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            </div>
+          ) : students.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground border-2 border-dashed border-white/10 rounded-2xl">
+              <Users className="w-12 h-12 mx-auto mb-3 opacity-50" />
+              <p>No students have been registered yet.</p>
+              <p className="text-sm mt-1">Click "Register Student" or "Bulk CSV Upload" to get started.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-white/10 text-muted-foreground text-sm">
+                    <th className="pb-4 font-semibold px-4">Student</th>
+                    <th className="pb-4 font-semibold px-4">Track</th>
+                    <th className="pb-4 font-semibold px-4">Current Module</th>
+                    <th className="pb-4 font-semibold px-4 text-right">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="text-sm">
+                  {filteredStudents.map((student) => (
+                    <tr key={student.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                      <td className="py-4 px-4">
+                        <div className="font-semibold text-foreground">{student.name}</div>
+                        <div className="text-muted-foreground text-xs flex items-center gap-2 mt-1">
+                          <span className="bg-primary/20 text-primary px-1.5 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider">{student.student_id}</span>
+                          {student.email}
+                        </div>
+                      </td>
+                      <td className="py-4 px-4 text-muted-foreground font-medium">
+                        {student.internship_title}
+                      </td>
+                      <td className="py-4 px-4 text-muted-foreground font-mono">
+                        {student.current_module}
+                      </td>
+                      <td className="py-4 px-4 text-right">
+                        {student.completed ? (
+                          <div className="inline-flex items-center gap-1.5 text-green-400 bg-green-500/10 px-3 py-1 rounded-full text-xs font-semibold border border-green-500/20">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Graduated
+                          </div>
+                        ) : (
+                          <div className="inline-flex items-center gap-1.5 text-accent bg-accent/10 px-3 py-1 rounded-full text-xs font-semibold border border-accent/20">
+                            <CircleDashed className="w-3.5 h-3.5 animate-spin-slow" /> Active
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredStudents.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="py-8 text-center text-muted-foreground">
+                        No students match your search.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </motion.div>
       </main>
     </div>
